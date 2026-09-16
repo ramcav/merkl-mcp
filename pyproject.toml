@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "merkl-mcp"
+version = "0.1.0"
+readme = "README.md"
+description = "Merkl as a tool server: an MCP server any agent harness can mount to trade, pay and read receipts through a Merkl-governed treasury"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Merkl", email = "hello@merkl.ai" }]
+keywords = ["ai", "agents", "mcp", "xrpl", "merkl", "payments"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = [
+    # Pinned below 2.0: the 2.x line renamed FastMCP to MCPServer and changed
+    # its API (see mcp's own migration note). The brief asks for "the official
+    # mcp SDK (FastMCP)" by name, so this stays on the 1.x line that has it;
+    # revisit this pin — and the server.py import — when the SDK migration
+    # lands deliberately, not as a side effect of a floor bump.
+    "mcp>=1.2,<2",
+    "merkl-sdk[xrpl]>=0.3.1",
+]
+
+[project.urls]
+Homepage = "https://merkl.ai"
+Repository = "https://github.com/ramcav/merkl-mcp"
+
+[project.scripts]
+merkl-mcp = "merkl_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["merkl_mcp"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-timeout>=2.3",
+    "ruff>=0.3",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM"]
+ignore = ["N818"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 60
