@@ -68,6 +68,15 @@ class Runtime:
                     raise
 
 
+def receipt_store_for(config: bundle.Config) -> LocalReceiptStore:
+    """The agent's receipt store: ``$MERKL_RECEIPT_DIR`` if set, else
+    ``receipts/`` under the bundle directory — where the agent's own earlier
+    receipts already live, and where new ones are written."""
+    import os
+
+    return LocalReceiptStore(None if os.environ.get("MERKL_RECEIPT_DIR") else config.receipts_dir)
+
+
 async def build_runtime(
     agent_dir: Path | None = None, *, state_dir_override: Path | None = None
 ) -> Runtime:
@@ -102,10 +111,7 @@ async def build_runtime(
     )
 
     home = state_dir_override or state_dir()
-    import os
-
-    receipts_dir = None if os.environ.get("MERKL_RECEIPT_DIR") else home / "receipts"
-    store = LocalReceiptStore(receipts_dir)
+    store = receipt_store_for(config)
     api_key = config.notary.api_key()
     builder = ReceiptBuilder(
         signer=signer,
@@ -131,4 +137,4 @@ async def build_runtime(
     )
 
 
-__all__ = ["Runtime", "WiringError", "build_runtime"]
+__all__ = ["Runtime", "WiringError", "build_runtime", "receipt_store_for"]

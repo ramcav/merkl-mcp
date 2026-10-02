@@ -70,3 +70,30 @@ def test_notary_needs_one_of_api_key_env_or_api_key_file(tmp_path: Path) -> None
     (directory / "trader.toml").write_text(text)
     with pytest.raises(bundle.ConfigError, match="api_key_file.*api_key_env"):
         bundle.load(directory)
+
+
+def test_market_table_is_optional_and_read_when_present(tmp_path: Path) -> None:
+    assert bundle.load(_bundle_dir(tmp_path)).market is None
+
+    config = bundle.parse(
+        {
+            **__import__("tomllib").loads(TOML),
+            "market": {"base": "XRP", "quote_code": "RLUSD", "quote_issuer": "rISSUER"},
+        },
+        base_dir=tmp_path,
+    )
+
+    assert config.market == bundle.MarketConfig("XRP", "RLUSD", "rISSUER")
+
+
+def test_receipts_live_under_the_bundle_directory(tmp_path: Path, monkeypatch) -> None:
+    from merkl_mcp.runtime import receipt_store_for
+
+    monkeypatch.delenv("MERKL_RECEIPT_DIR", raising=False)
+    config = bundle.load(_bundle_dir(tmp_path))
+
+    assert config.receipts_dir == tmp_path / "agent" / "receipts"
+    assert receipt_store_for(config).directory == tmp_path / "agent" / "receipts"
+
+    monkeypatch.setenv("MERKL_RECEIPT_DIR", str(tmp_path / "elsewhere"))
+    assert receipt_store_for(config).directory == tmp_path / "elsewhere"

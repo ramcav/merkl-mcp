@@ -40,8 +40,14 @@ and `[notary]` tables. There is no `[market]`, `[model]`, `[loop]` or
 bill of its own; every "which asset, which size, why" question arrives as a
 tool argument instead.
 
-The one proposal a person may be deciding on, and the local receipt store,
-live under `$MERKL_MCP_STATE` (default `/var/lib/merkl-mcp`) — writable,
+The agent's receipts are read from and written to `receipts/` in the bundle
+directory (override with `$MERKL_RECEIPT_DIR`), so that directory must be
+writable. An optional `[market]` table in `trader.toml` (`base`, `quote_code`,
+`quote_issuer`) is named back to the agent in `get_treasury`'s `market` field;
+`assets` lists each balance as `{code, issuer, balance}`.
+
+The one proposal a person may be deciding on
+lives under `$MERKL_MCP_STATE` (default `/var/lib/merkl-mcp`) — writable,
 unlike the read-only bundle — so an escalation survives a restart without
 re-preparing a transaction the policy key never signed.
 
@@ -61,7 +67,7 @@ merkl-mcp --http :8765     # streamable HTTP instead, on every interface
 
 ```bash
 docker run --rm -i \
-  -v "$PWD/merkl-agent:/agent:ro" -v merkl-mcp:/var/lib/merkl-mcp \
+  -v "$PWD/merkl-agent:/agent" -v merkl-mcp:/var/lib/merkl-mcp \
   ghcr.io/ramcav/merkl-mcp:0.1.0
 ```
 

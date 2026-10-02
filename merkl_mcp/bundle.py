@@ -3,10 +3,11 @@
 The five-file agent bundle merkl-sdk's ``merkl treasury init`` writes
 (``trader.toml``, ``agent-ed25519.pem``, ``wallet.json``, and the two optional
 relay/notary secret files — see ``merkl.cli.bundle``), plus four tables out of
-``trader.toml`` itself: ``[treasury]``, ``[rail]``, ``[signer]``, ``[notary]``.
+``trader.toml`` itself: ``[treasury]``, ``[rail]``, ``[signer]``, ``[notary]``, and the optional
+``[market]`` pair (named back to the agent, never read).
 
 This is deliberately a *subset* of what ``merkl_trader.config`` reads. There is
-no ``[market]``, ``[model]``, ``[loop]`` or ``[bill]`` table here, because this
+no ``[model]``, ``[loop]`` or ``[bill]`` table here, because this
 process has no trading loop, no model and no compute bill of its own — every
 "which asset, which size, why" question arrives as a tool argument instead of
 a standing config, and whatever calls this server owns the loop and the bill.
@@ -80,6 +81,16 @@ class NotaryConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class MarketConfig:
+    """The pair this agent trades, from the optional ``[market]`` table. Only
+    named back to the agent (``get_treasury``); this server never reads a book."""
+
+    base: str
+    quote_code: str
+    quote_issuer: str
+
+
+@dataclasses.dataclass(frozen=True)
 class Config:
     agent_dir: Path
     agent: AgentConfig
@@ -87,6 +98,12 @@ class Config:
     rail: RailConfig
     signer: SignerConfig
     notary: NotaryConfig
+    market: MarketConfig | None = None
+
+    @property
+    def receipts_dir(self) -> Path:
+        """The agent's receipt store: ``receipts/`` under the bundle directory."""
+        return self.agent_dir / "receipts"
 
 
 # -- reading ------------------------------------------------------------- #
@@ -149,6 +166,17 @@ def parse(raw: dict[str, Any], *, base_dir: Path) -> Config:
             token_file=_optional_path(signer, "token_file", base_dir),
         ),
         notary=_notary(notary, base_dir),
+        market=_market(raw.get("market")),
+    )
+
+
+def _market(table: Any) -> MarketConfig | None:
+    if not isinstance(table, dict):
+        return None
+    return MarketConfig(
+        base=_string(table, "base", "market"),
+        quote_code=_string(table, "quote_code", "market"),
+        quote_issuer=_string(table, "quote_issuer", "market"),
     )
 
 

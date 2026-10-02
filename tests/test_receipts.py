@@ -89,3 +89,19 @@ async def test_verify_receipt_unknown_or_hostile_id_is_an_error(
 
     assert "error" in await tools.verify_receipt(rt, "nope")
     assert "error" in await tools.verify_receipt(rt, "../../etc/passwd")
+
+
+@pytest.mark.asyncio
+async def test_read_receipts_finds_receipts_already_in_the_bundle_receipts_dir(
+    payment_rig, tmp_path: Path
+) -> None:
+    """The agent's own earlier receipts live in ``<bundle>/receipts``; a fresh
+    runtime pointed at that directory must see them."""
+    rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path, name="launch")
+    await tools.propose_payment(
+        rt, destination=SUPPLIER, amount="1.00", currency="RLUSD", issuer=ISSUER, why="launch"
+    )
+    later = make_runtime(payment_rig, payment_rig.ledger, tmp_path, name="restart")
+    later.store = rt.store  # what receipt_store_for(config) yields for the same bundle dir
+
+    assert len((await tools.read_receipts(later))["receipts"]) == 1

@@ -62,6 +62,8 @@ async def get_treasury(rt: Runtime) -> JSONObject:
             "address": rt.config.treasury.address,
             "network": {"rail": rt.config.rail.name, "json_rpc_url": rt.config.rail.json_rpc_url},
             "balances": balances,
+            "assets": _assets(balances),
+            "market": _market(rt),
             "policy_version": rt.config.treasury.policy_version,
             "signer": _health_line(health),
             "pending_with_a_person": (
@@ -70,6 +72,29 @@ async def get_treasury(rt: Runtime) -> JSONObject:
                 else {"challenge": pending.challenge, "expires_at": pending.expires_at}
             ),
         }
+
+
+def _assets(balances: dict[str, str]) -> list[JSONObject]:
+    """``"RLUSD.rIssuer": "0"`` as ``{code, issuer, balance}`` — the keys of
+    ``balances`` are for people, these fields are for the next tool call."""
+    assets: list[JSONObject] = []
+    for key, balance in balances.items():
+        code, _, issuer = key.partition(".")
+        asset: JSONObject = {"code": code, "balance": balance}
+        if issuer:
+            asset["issuer"] = issuer
+        assets.append(asset)
+    return assets
+
+
+def _market(rt: Runtime) -> JSONObject | None:
+    market = rt.config.market
+    if market is None:
+        return None
+    return {
+        "base": market.base,
+        "quote": {"code": market.quote_code, "issuer": market.quote_issuer},
+    }
 
 
 def _health_line(health: JSONObject) -> str:
