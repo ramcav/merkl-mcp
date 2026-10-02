@@ -57,8 +57,15 @@ class Runtime:
     async def aclose(self) -> None:
         for closer in (self.reader, self.escalations, self.signer):
             close = getattr(closer, "aclose", None)
-            if close is not None:
+            if close is None:
+                continue
+            try:
                 await close()
+            except (
+                RuntimeError
+            ) as exc:  # a client whose loop already ended has nothing left to close
+                if "closed" not in str(exc).lower():
+                    raise
 
 
 async def build_runtime(

@@ -10,10 +10,10 @@ that can fail — a missing bundle file, a bad TOML table — inside
 ``build_runtime``, so the only way this prints a traceback is a bug, not a
 config mistake.
 
-``FastMCP.run()`` is synchronous and starts its own event loop (``anyio.run``
-under stdio and streamable HTTP alike), so it cannot be called from inside
-one — building the runtime is one ``asyncio.run()`` that finishes and closes
-before ``app.run()`` ever starts its own.
+Everything runs in one ``asyncio.run()``: the runtime is built, served
+(``run_stdio_async`` / ``run_streamable_http_async``) and closed inside the
+same loop. Building it in one loop and closing it in another left httpx
+clients to close on a dead loop ("Event loop is closed").
 """
 
 from __future__ import annotations
@@ -57,21 +57,26 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
 
     try:
-        rt: Runtime = asyncio.run(build_runtime())
+        asyncio.run(serve(arguments.http))
     except (bundle.ConfigError, WiringError) as exc:
         print(f"configuration: {exc}", file=sys.stderr)
         return 2
+    return 0
 
+
+async def serve(http: tuple[str, int] | None) -> None:
+    """Build the runtime, serve, and close — all inside one running loop, so the
+    httpx clients are opened and closed by the loop that used them."""
+    rt: Runtime = await build_runtime()
     app = build_app(rt)
     try:
-        if arguments.http is None:
-            app.run(transport="stdio")
+        if http is None:
+            await app.run_stdio_async()
         else:
-            host, port = arguments.http
-            _configured(app, host, port).run(transport="streamable-http")
+            host, port = http
+            await _configured(app, host, port).run_streamable_http_async()
     finally:
-        asyncio.run(rt.aclose())
-    return 0
+        await rt.aclose()
 
 
 if __name__ == "__main__":

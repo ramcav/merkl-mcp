@@ -42,3 +42,49 @@ async def test_a_tool_that_raises_reports_error_instead_of_crashing(
     # FastMCP wraps a tool's return in content blocks; the dict comes back as
     # structured content either way — the point is nothing raised past here.
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_aclose_tolerates_a_client_bound_to_a_closed_loop(
+    payment_rig, tmp_path: Path
+) -> None:
+    import httpx
+
+    from merkl_mcp.ledger import XrplJsonRpcReader
+
+    rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path)
+    rt.reader = XrplJsonRpcReader("https://node.invalid", client=httpx.AsyncClient())
+
+    class _Stale:
+        async def aclose(self) -> None:
+            raise RuntimeError("Event loop is closed")
+
+    rt.escalations = _Stale()  # type: ignore[assignment]
+
+    await rt.aclose()  # must not raise
+
+
+def test_serve_closes_the_runtime_inside_the_running_loop(monkeypatch) -> None:
+    import asyncio
+
+    from merkl_mcp import __main__ as entry
+
+    seen: dict[str, bool] = {}
+
+    class _Rt:
+        async def aclose(self) -> None:
+            seen["loop_running"] = asyncio.get_running_loop().is_running()
+
+    class _App:
+        async def run_stdio_async(self) -> None:
+            seen["served"] = True
+
+    async def _build():
+        return _Rt()
+
+    monkeypatch.setattr(entry, "build_runtime", _build)
+    monkeypatch.setattr(entry, "build_app", lambda rt: _App())
+
+    asyncio.run(entry.serve(None))
+
+    assert seen == {"served": True, "loop_running": True}
