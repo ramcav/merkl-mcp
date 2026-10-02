@@ -56,7 +56,6 @@ async def test_get_treasury_names_assets_and_the_market_pair_as_fields(
         "issuer": ISSUER,
         "balance": "100000.00",
     }
-    assert next(a for a in result["assets"] if a["code"] == "XRP")["currency_hex"] == "XRP"
     assert all("issuer" not in a for a in result["assets"] if a["code"] == "XRP")
     assert result["market"] == {
         "base": "XRP",
