@@ -49,9 +49,19 @@ async def test_get_treasury_names_assets_and_the_market_pair_as_fields(
     result = await tools.get_treasury(rt)
 
     rlusd = next(a for a in result["assets"] if a["code"] == "RLUSD")
-    assert rlusd == {"code": "RLUSD", "issuer": ISSUER, "balance": "100000.00"}
+    hex_rlusd = "524C555344000000000000000000000000000000"
+    assert rlusd == {
+        "code": "RLUSD",
+        "currency_hex": hex_rlusd,
+        "issuer": ISSUER,
+        "balance": "100000.00",
+    }
+    assert next(a for a in result["assets"] if a["code"] == "XRP")["currency_hex"] == "XRP"
     assert all("issuer" not in a for a in result["assets"] if a["code"] == "XRP")
-    assert result["market"] == {"base": "XRP", "quote": {"code": "RLUSD", "issuer": ISSUER}}
+    assert result["market"] == {
+        "base": "XRP",
+        "quote": {"code": "RLUSD", "currency_hex": hex_rlusd, "issuer": ISSUER},
+    }
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from merkl.adapters.xrpl import currency_code
 from merkl.core.canonical import ContentError, JSONObject, shift_instant
 from merkl.core.intent import Amount, CurrencyRef, Intent, IssuedCurrency, SwapBuy, SwapSell
 from merkl.core.receipt import Instruction, Reasoning
@@ -75,12 +76,12 @@ async def get_treasury(rt: Runtime) -> JSONObject:
 
 
 def _assets(balances: dict[str, str]) -> list[JSONObject]:
-    """``"RLUSD.rIssuer": "0"`` as ``{code, issuer, balance}`` — the keys of
+    """``"RLUSD.rIssuer": "0"`` as ``{code, currency_hex, issuer, balance}`` — the keys of
     ``balances`` are for people, these fields are for the next tool call."""
     assets: list[JSONObject] = []
     for key, balance in balances.items():
         code, _, issuer = key.partition(".")
-        asset: JSONObject = {"code": code, "balance": balance}
+        asset: JSONObject = {"code": code, "currency_hex": currency_code(code), "balance": balance}
         if issuer:
             asset["issuer"] = issuer
         assets.append(asset)
