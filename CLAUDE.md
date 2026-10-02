@@ -8,8 +8,9 @@ only through a version bump and release, same relationship `merkl-trader` and
 ## What this is
 
 An MCP server (the official `mcp` SDK, `FastMCP`) exposing six tools —
-`get_treasury`, `get_market`, `read_receipts`, `propose_payment`,
-`propose_swap`, `pending_approval` — over stdio (default) or streamable HTTP
+`get_treasury`, `propose_payment`, `propose_swap`, `pending_approval`,
+`read_receipts`, `verify_receipt` (market data is not ours: the harness mounts
+an XRPL/market MCP server) — over stdio (default) or streamable HTTP
 (`--http :PORT`). Any harness that speaks MCP can mount it and get a treasury
 that trades through a Merkl policy it cannot read, exactly the way
 `merkl-trader` does today — this is that same flow, as tools instead of a
@@ -23,9 +24,8 @@ merkl_mcp/
   state.py      $MERKL_MCP_STATE/state.json — the one open proposal (with its
                 prepared_tx, so an escalation survives a restart) and the
                 in-flight pointer a crash mid-call leaves behind
-  book.py       reading the ledger: XrplJsonRpcReader (production, straight
-                JSON-RPC, outside the settlement port) and FakeLedgerReader
-                (tests, reads merkl.adapters.fake.FakeLedger directly)
+  ledger.py     balances only: XrplJsonRpcReader (production, JSON-RPC) and
+                FakeLedgerReader (tests, reads merkl.adapters.fake.FakeLedger)
   escalations.py  GET /v1/escalations/{challenge} — has a person decided?
   runtime.py    wires a Runtime together: build_runtime() for production
                 (DevSignerClient, XrplSettlementAdapter, HttpNotary,
@@ -56,9 +56,7 @@ ruff format --check merkl_mcp tests
 a real `SignerEngine`, a real encrypted keystore, real receipts on disk,
 against `merkl.adapters.fake`'s in-memory rail — the same rig the SDK's own
 scenario suite uses. Only the ledger reader is faked (`FakeLedgerReader`,
-`book.py`), because the in-memory rail has no JSON-RPC node to ask, and it
-prices a swap at one flat rate rather than a depth curve — see its own
-docstring for what that does and does not stand in for. `--timeout 60`
+`ledger.py`), because the in-memory rail has no JSON-RPC node to ask. `--timeout 60`
 (`pytest-timeout`) fails a hung test instead of a hung CI run; nothing here
 should ever approach that limit, since nothing touches a real network.
 
@@ -81,9 +79,9 @@ every `v*` tag; `ci.yml` runs tests and ruff on every push and PR.
   `[loop]` or `[bill]` — every "which asset, which size, why" question
   arrives as a tool argument, and whatever harness mounts this server owns
   the loop, the model and the mandate.
-- `get_treasury` and `get_market` never go near `ReceiptBuilder` or the rail
-  adapter — they are reads, off the ledger, the same reasoning
-  `merkl_trader.market` gives for the identical choice.
+- `get_treasury`, `read_receipts` and `verify_receipt` never go near `ReceiptBuilder` or the rail
+  adapter — they are reads (the verifier runs locally on the stored
+  receipt, no network).
 - Only one proposal may be open at a time, enforced by `state.py`'s
   `Pending` record on disk, not by a prompt. A second `propose_*` call while
   one is open returns `waiting_for_a_person` without touching the signer.

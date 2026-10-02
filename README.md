@@ -2,8 +2,8 @@
 
 Merkl as a tool server. An MCP server — the official `mcp` SDK, `FastMCP` —
 exposing six tools any agent harness can mount: a treasury that trades
-through a Merkl policy it cannot read, a market it can price, and receipts it
-can read back, the same flow `merkl-trader`'s reference loop runs today,
+through a Merkl policy it cannot read, receipts it can read back and a verifier
+that checks them, the same flow `merkl-trader`'s reference loop runs today,
 offered here as tools instead of a loop. Merkl is not in the business of
 building agents; it is the thing any agent's money goes through.
 
@@ -12,16 +12,22 @@ building agents; it is the thing any agent's money goes through.
 | tool | input | returns |
 |---|---|---|
 | `get_treasury` | — | address, network, balances (XRP and each trust line), policy version, the signer's health line, whether a proposal is pending with a person |
-| `get_market` | `{base, quote_code, quote_issuer, sizes: [..]}` | the book both ways at each size (what you would actually get), read off the ledger over JSON-RPC |
 | `read_receipts` | `{limit}` | this agent's recent receipts in words: outcome, what was asked for, the rule that refused it if any, when |
 | `propose_payment` | `{destination, amount, currency, issuer?, why}` | `settled` (with a tx hash), `waiting_for_a_person` (challenge, expiry), or `refused` (the rule, in words) |
 | `propose_swap` | `{sell_amount, sell_currency, sell_issuer?, buy_amount, buy_currency, buy_issuer?, why}` | same three shapes as `propose_payment` |
 | `pending_approval` | — | `none`, `waiting` (time left), or the resolution — it resumes the payment itself once a person has decided, and reports `settled`/`refused` |
+| `verify_receipt` | `{receipt_id}` | the SDK verifier's verdict in words, run locally on that receipt in the agent's store: whether anything was contradicted, whether every check ran, what was not checked |
 
 `why` becomes the proposal's reasoning note (200 characters). A tool never
 raises to the model: every failure is a result with `error` in words. Only
 one proposal may be open at a time — a second `propose_*` call while one is
 waiting returns `waiting_for_a_person` without touching the signer.
+
+Five verbs for money and evidence (`get_treasury`, `propose_payment`,
+`propose_swap`, `pending_approval`, `read_receipts`) plus `verify_receipt`.
+Market data (order books, prices) is not served here: it comes from the
+harness or any XRPL/market MCP server mounted beside this one, for example
+`xrpl-mcp-server` for the book and the CoinGecko MCP for reference prices.
 
 ## Configuration
 
@@ -98,6 +104,9 @@ server = MCPServerStdio(
 )
 ```
 
+Mount a market server beside it for the book and prices; Merkl does not
+provide one.
+
 **Hermes** — the same `mcpServers` convention as Claude Desktop:
 
 ```json
@@ -131,8 +140,8 @@ ruff format --check merkl_mcp tests
 ```
 
 Against `merkl.demo.rig`'s real signer, real encrypted keystore and the
-SDK's in-memory rail — only the ledger reader is faked, because the
-in-memory rail has no JSON-RPC node to ask (see `merkl_mcp/book.py`).
+SDK's in-memory rail — only the balance reader is faked, because the
+in-memory rail has no JSON-RPC node to ask (see `merkl_mcp/ledger.py`).
 
 ## See also
 
