@@ -94,7 +94,11 @@ def _market(rt: Runtime) -> JSONObject | None:
         return None
     return {
         "base": market.base,
-        "quote": {"code": market.quote_code, "issuer": market.quote_issuer},
+        "quote": {
+            "code": market.quote_code,
+            "currency_hex": currency_code(market.quote_code),
+            "issuer": market.quote_issuer,
+        },
     }
 
 
