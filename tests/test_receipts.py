@@ -48,3 +48,44 @@ async def test_read_receipts_on_an_empty_treasury_is_an_empty_list(
     rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path)
 
     assert await tools.read_receipts(rt) == {"receipts": []}
+
+
+@pytest.mark.asyncio
+async def test_verify_receipt_says_nothing_was_contradicted(payment_rig, tmp_path: Path) -> None:
+    rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path)
+    await tools.propose_payment(
+        rt, destination=SUPPLIER, amount="42.00", currency="RLUSD", issuer=ISSUER, why="pay"
+    )
+    receipt_id = (await tools.read_receipts(rt))["receipts"][0]["receipt_id"]
+
+    result = await tools.verify_receipt(rt, receipt_id)
+
+    assert result["contradicted"] is False
+    assert result["verdict"].startswith("Nothing was contradicted.")
+    assert result["failed_checks"] == []
+
+
+@pytest.mark.asyncio
+async def test_verify_receipt_catches_a_tampered_receipt(payment_rig, tmp_path: Path) -> None:
+    rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path)
+    await tools.propose_payment(
+        rt, destination=SUPPLIER, amount="42.00", currency="RLUSD", issuer=ISSUER, why="pay"
+    )
+    receipt_id = (await tools.read_receipts(rt))["receipts"][0]["receipt_id"]
+    path = rt.store.path_for(receipt_id)
+    path.write_text(path.read_text().replace("42.00", "4200.00"))
+
+    result = await tools.verify_receipt(rt, receipt_id)
+
+    assert result["contradicted"] is True
+    assert result["failed_checks"]
+
+
+@pytest.mark.asyncio
+async def test_verify_receipt_unknown_or_hostile_id_is_an_error(
+    payment_rig, tmp_path: Path
+) -> None:
+    rt = make_runtime(payment_rig, payment_rig.ledger, tmp_path)
+
+    assert "error" in await tools.verify_receipt(rt, "nope")
+    assert "error" in await tools.verify_receipt(rt, "../../etc/passwd")

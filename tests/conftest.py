@@ -30,7 +30,7 @@ from merkl.sdk.receipt_store import LocalReceiptStore
 from merkl.sdk.receipts import ReceiptBuilder
 
 from merkl_mcp import bundle
-from merkl_mcp.book import FakeLedgerReader
+from merkl_mcp.ledger import FakeLedgerReader
 from merkl_mcp.runtime import Runtime
 from merkl_mcp.state import McpState
 

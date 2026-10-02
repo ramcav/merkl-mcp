@@ -17,8 +17,8 @@ async def test_the_six_tools_are_registered(payment_rig, tmp_path: Path) -> None
 
     assert names == {
         "get_treasury",
-        "get_market",
         "read_receipts",
+        "verify_receipt",
         "propose_payment",
         "propose_swap",
         "pending_approval",

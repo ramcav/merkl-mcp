@@ -20,7 +20,8 @@ from merkl_mcp.runtime import Runtime
 
 INSTRUCTIONS = (
     "Merkl as a tool server: every payment and swap goes through a Merkl policy "
-    "this process cannot read. get_market and get_treasury are free reads. "
+    "this process cannot read. get_treasury, read_receipts and verify_receipt are free reads; "
+    "market data comes from other servers. "
     "propose_payment and propose_swap either settle, wait for a person, or are "
     "refused with the rule in words — call pending_approval to check on one that "
     "is waiting. Only one proposal may be open at a time."
@@ -45,15 +46,6 @@ def build_app(rt: Runtime) -> FastMCP:
         """Address, balances (XRP and each trust line), policy version, signer
         health, and whether a proposal is waiting on a person."""
         return await _safe(tools.get_treasury, rt)
-
-    @app.tool()
-    async def get_market(
-        base: str, quote_code: str, quote_issuer: str, sizes: list[str]
-    ) -> dict[str, Any]:
-        """The book both ways at each size in ``sizes`` — what you would
-        actually get, read straight off the ledger. ``base`` must be "XRP";
-        sizes are decimal strings, e.g. ["10", "100"]."""
-        return await _safe(tools.get_market, rt, base, quote_code, quote_issuer, sizes)
 
     @app.tool()
     async def read_receipts(limit: int = 10) -> dict[str, Any]:
@@ -112,6 +104,14 @@ def build_app(rt: Runtime) -> FastMCP:
         "waiting" (with the time left), or the resolution — it resumes and
         settles or refuses the payment itself once a human has decided."""
         return await _safe(tools.pending_approval, rt)
+
+    @app.tool()
+    async def verify_receipt(receipt_id: str) -> dict[str, Any]:
+        """Verify one of this agent's receipts, locally, with the SDK verifier
+        (no network, no trusted party). Returns the verdict in words: whether
+        anything was contradicted, whether every check ran, and what was not
+        checked. ``receipt_id`` comes from ``read_receipts``."""
+        return await _safe(tools.verify_receipt, rt, receipt_id)
 
     return app
 

@@ -25,8 +25,8 @@ from merkl.sdk.receipt_store import LocalReceiptStore
 from merkl.sdk.receipts import ReceiptBuilder, SystemClock
 
 from merkl_mcp import bundle
-from merkl_mcp.book import LedgerReader, XrplJsonRpcReader
 from merkl_mcp.escalations import EscalationQueue
+from merkl_mcp.ledger import LedgerReader, XrplJsonRpcReader
 from merkl_mcp.state import McpState, state_dir, state_path
 
 

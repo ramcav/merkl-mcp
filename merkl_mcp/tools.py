@@ -1,6 +1,6 @@
-"""The six tools, as the shared contract (``BRIEF-P23-MCP-HARNESS.md``) names
-them: ``get_treasury``, ``get_market``, ``read_receipts``, ``propose_payment``,
-``propose_swap``, ``pending_approval``.
+"""The six tools: ``get_treasury``, ``propose_payment``, ``propose_swap``,
+``pending_approval``, ``read_receipts``, ``verify_receipt``. Market data is not
+Merkl's business; the harness gets it from an XRPL or market MCP server.
 
 Every function here takes a :class:`~merkl_mcp.runtime.Runtime` and returns a
 plain JSON-able dict. None of them raises for a business outcome — a denial,
@@ -17,14 +17,17 @@ never start a new proposal while a person is still deciding the last one.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from merkl.core.canonical import ContentError, JSONObject, shift_instant
 from merkl.core.intent import Amount, CurrencyRef, Intent, IssuedCurrency, SwapBuy, SwapSell
 from merkl.core.receipt import Instruction, Reasoning
+from merkl.core.verify.receipt import receipt_from_content
+from merkl.core.verify.receipt import verify_receipt as verify_receipt_leaves
 from merkl.shared.hashing import SHA256Hash
 
 from merkl_mcp.runtime import Runtime
@@ -39,6 +42,8 @@ NOTE_LENGTH = 200
 truncates it."""
 
 RECEIPTS_SHOWN_MAX = 20
+
+_RECEIPT_ID = re.compile(r"[A-Za-z0-9_.-]{1,128}")
 
 
 # --------------------------------------------------------------------------- #
@@ -77,29 +82,6 @@ def _health_line(health: JSONObject) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# get_market
-# --------------------------------------------------------------------------- #
-
-
-async def get_market(
-    rt: Runtime, base: str, quote_code: str, quote_issuer: str, sizes: list[str]
-) -> JSONObject:
-    """The book both ways at each size — what you would actually get."""
-    if base != "XRP":
-        return {"error": f"{base!r} is not a native asset this rail reads; base must be XRP"}
-    try:
-        decimals = [Decimal(size) for size in sizes]
-    except InvalidOperation:
-        return {"error": 'sizes must be decimal strings, e.g. ["10", "100"]'}
-    if not decimals:
-        return {"error": "sizes must not be empty"}
-    book = await rt.reader.book(
-        base=base, quote_code=quote_code, quote_issuer=quote_issuer, sizes=decimals
-    )
-    return {"pair": f"{base}/{quote_code}", "prices_are": f"{quote_code} per 1 {base}", **book}
-
-
-# --------------------------------------------------------------------------- #
 # read_receipts
 # --------------------------------------------------------------------------- #
 
@@ -128,6 +110,45 @@ async def read_receipts(rt: Runtime, limit: int = 10) -> JSONObject:
         _summarize(receipt_id, leaves, path) for receipt_id, leaves, path in found_all[-shown:]
     ]
     return {"receipts": rows}
+
+
+async def verify_receipt(rt: Runtime, receipt_id: str) -> JSONObject:
+    """Run the SDK verifier, locally, on a receipt in this agent's store.
+
+    No network and no trusted party: the checks are the ones ``merkl verify``
+    runs. Trust anchors this process was not given (validator keys, PCRs, the
+    policy document) come back as named unchecked lines, never as passes.
+    """
+    if not _RECEIPT_ID.fullmatch(receipt_id):
+        return {"error": "receipt_id must be a receipt id from read_receipts"}
+    path = rt.store.path_for(receipt_id)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"error": f"no receipt {receipt_id} in this agent's store"}
+    envelope, leaves = receipt_from_content(record)
+    verdict = verify_receipt_leaves(
+        envelope,
+        leaves,
+        settlement_proof=record.get("settlement_proof"),
+        policy_document=record.get("policy_document"),
+    )
+    failed = [f"{check.name}: {check.detail}" for check in verdict.result.failures]
+    summary = verdict.summary
+    return {
+        "receipt_id": receipt_id,
+        "verdict": verdict.verdict_line,
+        "contradicted": not verdict.ok,
+        "complete": verdict.complete,
+        "failed_checks": failed,
+        "authorization": verdict.transaction_authorization,
+        "ledger_inclusion": verdict.ledger_inclusion,
+        "plain": [
+            line
+            for line in (summary.instructed, summary.rule, summary.approved, summary.settled)
+            if line
+        ],
+    }
 
 
 def _mtime(path: Any) -> float:
@@ -466,10 +487,10 @@ async def _recover(rt: Runtime) -> None:
 
 
 __all__ = [
-    "get_market",
     "get_treasury",
     "pending_approval",
     "propose_payment",
     "propose_swap",
     "read_receipts",
+    "verify_receipt",
 ]
