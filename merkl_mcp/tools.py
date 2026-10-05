@@ -32,6 +32,7 @@ from merkl.core.verify.receipt import receipt_from_content
 from merkl.core.verify.receipt import verify_receipt as verify_receipt_leaves
 from merkl.shared.hashing import SHA256Hash
 
+from merkl_mcp import compute_bill
 from merkl_mcp.runtime import Runtime
 from merkl_mcp.state import InFlight, Pending
 
@@ -66,6 +67,7 @@ async def get_treasury(rt: Runtime) -> JSONObject:
             "balances": balances,
             "assets": _assets(balances),
             "market": _market(rt),
+            "compute_bill": await _compute_bill(rt),
             "policy_version": rt.config.treasury.policy_version,
             "signer": _health_line(health),
             "pending_with_a_person": (
@@ -74,6 +76,46 @@ async def get_treasury(rt: Runtime) -> JSONObject:
                 else {"challenge": pending.challenge, "expires_at": pending.expires_at}
             ),
         }
+
+
+async def _compute_bill(rt: Runtime) -> JSONObject | None:
+    """What the agent owes its operator, from the harness's own journal costs."""
+    bill = rt.config.bill
+    if bill is None:
+        return None
+    home = rt.config.trader_home
+    last_paid = await _last_paid_to(rt, bill.operator)
+    since = None if last_paid is None else last_paid.isoformat()
+    owed_usd = compute_bill.journal_costs(home / "journal.jsonl", since) if home else Decimal(0)
+    price = await rt.prices.xrp_usd() if rt.prices is not None else None
+    now = _when(rt.clock.now())
+    return compute_bill.as_content(
+        owed=compute_bill.owed_xrp(owed_usd, price),
+        owed_usd=owed_usd,
+        due_day=bill.bill_day,
+        due=compute_bill.due_now(now, bill.bill_day, owed_usd, last_paid),
+        operator=bill.operator,
+    )
+
+
+async def _last_paid_to(rt: Runtime, operator: str) -> datetime | None:
+    """When the last settled payment to ``operator`` was filed (receipt file time)."""
+    latest: datetime | None = None
+    for envelope in await rt.store.list(rt.config.treasury.address):
+        found = await rt.store.get(envelope.receipt_id)
+        if found is None:  # pragma: no cover - listed a moment ago
+            continue
+        _, leaves = found
+        intent, result = leaves.intent, leaves.result
+        if intent is None or result is None or result.outcome != "settled":
+            continue
+        if intent.is_swap or intent.destination != operator:
+            continue
+        stamp = _mtime_iso(rt.store.path_for(envelope.receipt_id))
+        moment = _when(stamp) if stamp else None
+        if moment is not None and (latest is None or moment > latest):
+            latest = moment
+    return latest
 
 
 def _assets(balances: dict[str, str]) -> list[JSONObject]:

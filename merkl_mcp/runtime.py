@@ -25,6 +25,7 @@ from merkl.sdk.receipt_store import LocalReceiptStore
 from merkl.sdk.receipts import ReceiptBuilder, SystemClock
 
 from merkl_mcp import bundle
+from merkl_mcp.compute_bill import CoinGeckoPrice
 from merkl_mcp.escalations import EscalationQueue
 from merkl_mcp.ledger import LedgerReader, XrplJsonRpcReader
 from merkl_mcp.state import McpState, state_dir, state_path
@@ -48,6 +49,8 @@ class Runtime:
     escalations: EscalationQueue
     state: McpState
     state_path: Path
+    prices: Any = None
+    """Whatever answers ``xrp_usd()`` — CoinGecko in production, a fake in tests."""
     clock: Any = dataclasses.field(default_factory=SystemClock)
     lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
 
@@ -55,7 +58,7 @@ class Runtime:
         self.state.save(self.state_path)
 
     async def aclose(self) -> None:
-        for closer in (self.reader, self.escalations, self.signer):
+        for closer in (self.reader, self.escalations, self.signer, self.prices):
             close = getattr(closer, "aclose", None)
             if close is None:
                 continue
@@ -134,6 +137,7 @@ async def build_runtime(
         escalations=EscalationQueue(config.notary.url, api_key),
         state=McpState.load(state_path(home)),
         state_path=state_path(home),
+        prices=CoinGeckoPrice(),
     )
 
 

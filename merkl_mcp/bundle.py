@@ -91,6 +91,17 @@ class MarketConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class BillConfig:
+    """The optional ``[bill]`` table: who is owed for compute and on which day."""
+
+    operator: str
+    bill_day: str
+
+
+TRADER_HOME_ENV = "MERKL_TRADER_HOME"
+
+
+@dataclasses.dataclass(frozen=True)
 class Config:
     agent_dir: Path
     agent: AgentConfig
@@ -99,6 +110,9 @@ class Config:
     signer: SignerConfig
     notary: NotaryConfig
     market: MarketConfig | None = None
+    bill: BillConfig | None = None
+    trader_home: Path | None = None
+    """Where the harness writes ``journal.jsonl``: ``$MERKL_TRADER_HOME`` or ``[loop].home``."""
 
     @property
     def receipts_dir(self) -> Path:
@@ -167,7 +181,27 @@ def parse(raw: dict[str, Any], *, base_dir: Path) -> Config:
         ),
         notary=_notary(notary, base_dir),
         market=_market(raw.get("market")),
+        bill=_bill(raw.get("bill")),
+        trader_home=_trader_home(raw.get("loop"), base_dir),
     )
+
+
+def _bill(table: Any) -> BillConfig | None:
+    if not isinstance(table, dict):
+        return None
+    return BillConfig(
+        operator=_string(table, "operator", "bill"),
+        bill_day=_string(table, "bill_day", "bill").lower(),
+    )
+
+
+def _trader_home(table: Any, base_dir: Path) -> Path | None:
+    override = os.environ.get(TRADER_HOME_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+    if isinstance(table, dict) and table.get("home"):
+        return _path(table, "home", "loop", base_dir)
+    return None
 
 
 def _market(table: Any) -> MarketConfig | None:

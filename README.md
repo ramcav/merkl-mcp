@@ -44,7 +44,11 @@ The agent's receipts are read from and written to `receipts/` in the bundle
 directory (override with `$MERKL_RECEIPT_DIR`), so that directory must be
 writable. An optional `[market]` table in `trader.toml` (`base`, `quote_code`,
 `quote_issuer`) is named back to the agent in `get_treasury`'s `market` field;
-`assets` lists each balance as `{code, issuer, balance}`.
+`assets` lists each balance as `{code, issuer, balance}`. With optional `[bill]` and
+`[loop].home` tables (or `$MERKL_TRADER_HOME`), `get_treasury` also returns
+`compute_bill: {owed, currency: "XRP", due_day, due_now, operator}`: the
+harness journal's `cost_usd` since the last settled payment to the operator, in XRP at
+CoinGecko's public price (cached 10 minutes); `owed` is null when no price is available.
 
 The one proposal a person may be deciding on
 lives under `$MERKL_MCP_STATE` (default `/var/lib/merkl-mcp`) — writable,
