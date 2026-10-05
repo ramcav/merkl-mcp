@@ -29,6 +29,11 @@ Market data (order books, prices) is not served here: it comes from the
 harness or any XRPL/market MCP server mounted beside this one, for example
 `xrpl-mcp-server` for the book and the CoinGecko MCP for reference prices.
 
+`propose_payment` and `propose_swap` also accept `session_id`, `session_action_count`
+and `depends_on`. A harness that opened a Merkl session passes them so the receipt
+joins that session (the receipt's `session_locator` and one `payments` action in
+it); the model never supplies them. They are no-ops without a `session_id`.
+
 ## Configuration
 
 Everything this server needs is the five-file agent bundle `merkl treasury

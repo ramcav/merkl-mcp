@@ -23,6 +23,7 @@ from merkl.adapters.signer_dev import DevSignerClient
 from merkl.adapters.xrpl import XrplSettlementAdapter, load_wallets
 from merkl.sdk.receipt_store import LocalReceiptStore
 from merkl.sdk.receipts import ReceiptBuilder, SystemClock
+from merkl.sdk.transport import AsyncTransport
 
 from merkl_mcp import bundle
 from merkl_mcp.compute_bill import CoinGeckoPrice
@@ -50,6 +51,8 @@ class Runtime:
     state: McpState
     state_path: Path
     prices: Any = None
+    session_transport: Any = None
+    """Posts to a session the harness opened (``AsyncTransport``); ``None`` disables joining."""
     """Whatever answers ``xrp_usd()`` — CoinGecko in production, a fake in tests."""
     clock: Any = dataclasses.field(default_factory=SystemClock)
     lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
@@ -58,7 +61,13 @@ class Runtime:
         self.state.save(self.state_path)
 
     async def aclose(self) -> None:
-        for closer in (self.reader, self.escalations, self.signer, self.prices):
+        for closer in (
+            self.reader,
+            self.escalations,
+            self.signer,
+            self.prices,
+            _Closing(self.session_transport),
+        ):
             close = getattr(closer, "aclose", None)
             if close is None:
                 continue
@@ -69,6 +78,17 @@ class Runtime:
             ) as exc:  # a client whose loop already ended has nothing left to close
                 if "closed" not in str(exc).lower():
                     raise
+
+
+class _Closing:
+    """``AsyncTransport`` closes with ``close()``; ``aclose`` is what ``Runtime.aclose`` calls."""
+
+    def __init__(self, transport: Any) -> None:
+        self._transport = transport
+
+    async def aclose(self) -> None:
+        if self._transport is not None:
+            await self._transport.close()
 
 
 def receipt_store_for(config: bundle.Config) -> LocalReceiptStore:
@@ -138,6 +158,7 @@ async def build_runtime(
         state=McpState.load(state_path(home)),
         state_path=state_path(home),
         prices=CoinGeckoPrice(),
+        session_transport=AsyncTransport(base_url=config.notary.url, api_key=api_key),
     )
 
 

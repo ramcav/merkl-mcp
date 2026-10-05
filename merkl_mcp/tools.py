@@ -34,6 +34,7 @@ from merkl.shared.hashing import SHA256Hash
 
 from merkl_mcp import compute_bill
 from merkl_mcp.runtime import Runtime
+from merkl_mcp.session import JoinedSession, joined
 from merkl_mcp.state import InFlight, Pending
 
 INTENT_TTL_SECONDS = 3600
@@ -281,8 +282,15 @@ async def propose_payment(
     currency: str,
     issuer: str | None = None,
     why: str = "",
+    session_id: str | None = None,
+    session_action_count: int | None = None,
+    depends_on: str | None = None,
 ) -> JSONObject:
-    """Propose a payment. Amounts are decimal strings — never a float."""
+    """Propose a payment. Amounts are decimal strings — never a float.
+
+    ``session_id`` (with ``session_action_count``, how many actions that session
+    already holds, and ``depends_on``, an action id) joins the receipt to a
+    session the caller opened; the harness supplies them, the model never does."""
 
     def build(nonce: str, expires_at: str) -> Intent:
         return Intent(
@@ -296,7 +304,14 @@ async def propose_payment(
             expires_at=expires_at,
         )
 
-    return await _propose(rt, kind="payment", build_intent=build, why=why)
+    return await _propose(
+        rt,
+        kind="payment",
+        build_intent=build,
+        why=why,
+        session=_session(rt, session_id, session_action_count),
+        depends_on=depends_on,
+    )
 
 
 async def propose_swap(
@@ -309,8 +324,13 @@ async def propose_swap(
     sell_issuer: str | None = None,
     buy_issuer: str | None = None,
     why: str = "",
+    session_id: str | None = None,
+    session_action_count: int | None = None,
+    depends_on: str | None = None,
 ) -> JSONObject:
-    """Propose a swap: sell at most ``sell_amount``, buy exactly ``buy_amount``."""
+    """Propose a swap: sell at most ``sell_amount``, buy exactly ``buy_amount``.
+
+    The ``session_*`` and ``depends_on`` arguments are as for ``propose_payment``."""
 
     def build(nonce: str, expires_at: str) -> Intent:
         treasury = rt.config.treasury.address
@@ -327,7 +347,24 @@ async def propose_swap(
             expires_at=expires_at,
         )
 
-    return await _propose(rt, kind="swap", build_intent=build, why=why)
+    return await _propose(
+        rt,
+        kind="swap",
+        build_intent=build,
+        why=why,
+        session=_session(rt, session_id, session_action_count),
+        depends_on=depends_on,
+    )
+
+
+def _session(
+    rt: Runtime, session_id: str | None, action_count: int | None
+) -> JoinedSession | None:
+    if not session_id or rt.session_transport is None:
+        return None
+    return JoinedSession(
+        rt.session_transport, rt.config.agent.agent_id, session_id, action_count or 0
+    )
 
 
 def _currency(code: str, issuer: str | None) -> CurrencyRef:
@@ -335,7 +372,13 @@ def _currency(code: str, issuer: str | None) -> CurrencyRef:
 
 
 async def _propose(
-    rt: Runtime, *, kind: str, build_intent: Callable[[str, str], Intent], why: str
+    rt: Runtime,
+    *,
+    kind: str,
+    build_intent: Callable[[str, str], Intent],
+    why: str,
+    session: JoinedSession | None = None,
+    depends_on: str | None = None,
 ) -> JSONObject:
     async with rt.lock:
         await _recover(rt)
@@ -381,9 +424,14 @@ async def _propose(
         reasoning = _reasoning(why)
 
         try:
-            outcome = await rt.builder.execute(
-                instruction=instruction, intent=intent, reasoning=reasoning, receipt_id=receipt_id
-            )
+            with joined(session):
+                outcome = await rt.builder.execute(
+                    instruction=instruction,
+                    intent=intent,
+                    reasoning=reasoning,
+                    receipt_id=receipt_id,
+                    depends_on=depends_on,
+                )
         except Exception as exc:  # never leaves this process unresolved
             rt.state.in_flight = None
             rt.save()

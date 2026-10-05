@@ -55,14 +55,22 @@ def build_app(rt: Runtime) -> FastMCP:
 
     @app.tool()
     async def propose_payment(
-        destination: str, amount: str, currency: str, why: str, issuer: str | None = None
+        destination: str,
+        amount: str,
+        currency: str,
+        why: str,
+        issuer: str | None = None,
+        session_id: str | None = None,
+        session_action_count: int | None = None,
+        depends_on: str | None = None,
     ) -> dict[str, Any]:
         """Propose a payment of ``amount`` ``currency`` to ``destination``.
         ``amount`` is a decimal string, never a float. ``issuer`` is required
         for an issued currency (e.g. RLUSD) and omitted for XRP. ``why``
         becomes this proposal's reasoning note. Returns settled (with a tx
         hash), waiting_for_a_person (with a challenge and expiry), or refused
-        (with the rule, in words)."""
+        (with the rule, in words). ``session_id``, ``session_action_count`` and
+        ``depends_on`` are filled in by the harness, not the model."""
         return await _safe(
             tools.propose_payment,
             rt,
@@ -71,6 +79,9 @@ def build_app(rt: Runtime) -> FastMCP:
             currency=currency,
             issuer=issuer,
             why=why,
+            session_id=session_id,
+            session_action_count=session_action_count,
+            depends_on=depends_on,
         )
 
     @app.tool()
@@ -82,6 +93,9 @@ def build_app(rt: Runtime) -> FastMCP:
         why: str,
         sell_issuer: str | None = None,
         buy_issuer: str | None = None,
+        session_id: str | None = None,
+        session_action_count: int | None = None,
+        depends_on: str | None = None,
     ) -> dict[str, Any]:
         """Propose a swap: sell at most ``sell_amount`` ``sell_currency`` for
         exactly ``buy_amount`` ``buy_currency``. Same amount, issuer and
@@ -96,6 +110,9 @@ def build_app(rt: Runtime) -> FastMCP:
             sell_issuer=sell_issuer,
             buy_issuer=buy_issuer,
             why=why,
+            session_id=session_id,
+            session_action_count=session_action_count,
+            depends_on=depends_on,
         )
 
     @app.tool()
