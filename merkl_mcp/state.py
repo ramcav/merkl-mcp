@@ -128,9 +128,13 @@ class McpState:
 
     pending: Pending | None = None
     in_flight: InFlight | None = None
+    refused: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    """Recently refused intents (``destination``, ``amount``, ``at``): the guard that
+    keeps a retrying agent from filing identical refused receipts."""
 
     def to_content(self) -> JSONObject:
         return {
+            "refused": self.refused,
             "counter": self.counter,
             "pending": self.pending.to_content() if self.pending else None,
             "in_flight": self.in_flight.to_content() if self.in_flight else None,
@@ -140,6 +144,7 @@ class McpState:
     def from_content(cls, data: dict[str, Any]) -> McpState:
         return cls(
             counter=int(data.get("counter", 0)),
+            refused=[dict(item) for item in data.get("refused") or []],
             pending=Pending.from_content(data["pending"]) if data.get("pending") else None,
             in_flight=InFlight.from_content(data["in_flight"]) if data.get("in_flight") else None,
         )

@@ -20,7 +20,8 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from merkl.adapters.xrpl import currency_code
@@ -316,6 +317,17 @@ async def _propose(
                 )
             }
 
+        already = _refused_within_the_hour(rt, intent, now)
+        if already is not None:
+            rt.state.counter -= 1
+            return {
+                "outcome": "refused",
+                "reason": (
+                    f"the same intent was refused at {already}; not filing it again within "
+                    "the hour. Wait, or change what you ask for."
+                ),
+            }
+
         rt.state.in_flight = InFlight(receipt_id=receipt_id, nonce=nonce, kind=kind, at=now)
         rt.save()
 
@@ -369,12 +381,45 @@ def _finish(rt: Runtime, outcome: Any, *, kind: str, intent: Intent) -> JSONObje
         )
         rt.save()
         return _waiting_result(rt.state.pending)
+    _remember_refusal(rt, intent)
     rt.save()
     return {
         "outcome": "refused",
         "reason": _reason(outcome),
         "receipt_id": outcome.envelope.receipt_id,
     }
+
+
+REFILE_WINDOW = timedelta(hours=1)
+SAME_INTENT_TOLERANCE = Decimal("0.01")
+
+
+def _when(instant: str) -> datetime:
+    return datetime.fromisoformat(instant.replace("Z", "+00:00"))
+
+
+def _refused_within_the_hour(rt: Runtime, intent: Intent, now: str) -> str | None:
+    """When the same intent (destination, amount within 1%) was last refused, if
+    that was inside the hour. At most one refused receipt per intent per hour."""
+    amount = Decimal(intent.outflow.value)
+    for item in rt.state.refused:
+        if item["destination"] != intent.destination:
+            continue
+        if _when(now) - _when(item["at"]) >= REFILE_WINDOW:
+            continue
+        earlier = Decimal(item["amount"])
+        if abs(amount - earlier) <= earlier * SAME_INTENT_TOLERANCE:
+            return item["at"]
+    return None
+
+
+def _remember_refusal(rt: Runtime, intent: Intent) -> None:
+    now = rt.clock.now()
+    kept = [
+        item for item in rt.state.refused if _when(now) - _when(item["at"]) < 2 * REFILE_WINDOW
+    ]
+    kept.append({"destination": intent.destination, "amount": intent.outflow.value, "at": now})
+    rt.state.refused = kept
 
 
 def _waiting_result(pending: Pending) -> JSONObject:
